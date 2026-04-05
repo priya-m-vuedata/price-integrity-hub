@@ -1,0 +1,254 @@
+@page "/history"
+@rendermode InteractiveServer
+@using PriceIntegrityHub.Core.Models
+@using PriceIntegrityHub.Core.Interfaces
+@inject IDataStore DataStore
+@inject ISnackbar Snackbar
+
+<PageTitle>History - Price Integrity Hub</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">
+    <MudIcon Icon="@Icons.Material.Filled.History" Class="mr-2" />
+    Validation History
+</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">
+    View and analyze previous validation runs
+</MudText>
+
+@if (uploadedFileInfo != null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AttachFile">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.body2"><strong>File Loaded:</strong> @uploadedFileInfo.FileName</MudText>
+                <MudText Typo="Typo.caption">Size: @uploadedFileInfo.FileSizeKB KB | Products: @uploadedProductCount | Uploaded: @uploadedFileInfo.UploadedAt.ToString("HH:mm:ss")</MudText>
+            </MudStack>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Success" 
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Href="/validation">
+                Run Validation
+            </MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+<MudPaper Elevation="4" Class="pa-6">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudTextField T="string"
+                      Value="@searchString"
+                      ValueChanged="@((string s) => OnSearchChanged(s))"
+                      Placeholder="Search by date, ID, or status..." 
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" 
+                      IconSize="Size.Medium"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Immediate="true"
+                      Class="flex-grow-1" />
+
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   Class="ml-4"
+                   OnClick="RefreshHistory">
+            Refresh
+        </MudButton>
+    </MudStack>
+
+    @if (!validationHistory.Any())
+    {
+        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+            No validation history available. Run a validation to see history.
+        </MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.caption" Class="mb-2" Color="Color.Secondary">
+            Showing @filteredHistory.Count of @validationHistory.Count records
+        </MudText>
+
+        <MudTable Items="@filteredHistory" 
+                  Hover="true" 
+                  Striped="true" 
+                  Dense="true"
+                  Elevation="0">
+            <HeaderContent>
+                <MudTh>Run ID</MudTh>
+                <MudTh>Run Date</MudTh>
+                <MudTh>Total Products</MudTh>
+                <MudTh>Matched</MudTh>
+                <MudTh>Mismatch</MudTh>
+                <MudTh>New</MudTh>
+                <MudTh>Missing</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Run ID">
+                    <MudText Typo="Typo.body2"><strong>#@context.Id</strong></MudText>
+                </MudTd>
+                <MudTd DataLabel="Run Date">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2">@context.RunDate.ToString("MMM dd, yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.RunDate.ToString("HH:mm")</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Total Products">
+                    <MudText Typo="Typo.body2">@context.TotalProducts</MudText>
+                </MudTd>
+                <MudTd DataLabel="Matched">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                        <MudText Typo="Typo.body2">@context.Matched</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Mismatch">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.body2">@context.Mismatch</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="New">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.NewReleases" Size="Size.Small" Color="Color.Info" />
+                        <MudText Typo="Typo.body2">@context.NewProducts</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Missing">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Warning" />
+                        <MudText Typo="Typo.body2">@context.MissingProducts</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudStack Row="true" Spacing="1">
+                        <MudTooltip Text="View Results">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" 
+                                           Color="Color.Primary" 
+                                           Size="Size.Small"
+                                           Href="/results" />
+                        </MudTooltip>
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
+            </PagerContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@if (validationHistory.Any())
+{
+    <MudGrid Class="mt-6">
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.h6" Color="Color.Primary">Total Runs</MudText>
+                    <MudText Typo="Typo.h3">@validationHistory.Count</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">All time validations</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.h6" Color="Color.Success">Success Rate</MudText>
+                    <MudText Typo="Typo.h3">@GetSuccessRate()%</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Average match rate</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.h6" Color="Color.Info">Last Run</MudText>
+                    <MudText Typo="Typo.h5">@validationHistory.First().RunDate.ToString("MMM dd")</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@validationHistory.First().RunDate.ToString("HH:mm")</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private string searchString = string.Empty;
+    private List<ValidationRun> validationHistory = new();
+    private List<ValidationRun> filteredHistory = new();
+    private UploadedFileInfo? uploadedFileInfo;
+    private int uploadedProductCount = 0;
+
+    protected override void OnInitialized()
+    {
+        LoadHistory();
+
+        // Check if a file is currently loaded
+        uploadedFileInfo = DataStore.GetUploadedFileInfo();
+        uploadedProductCount = DataStore.GetUploadedProducts().Count;
+    }
+
+    private void LoadHistory()
+    {
+        validationHistory = DataStore.GetValidationHistory();
+        ApplyFilters();
+    }
+
+    private void RefreshHistory()
+    {
+        LoadHistory();
+        Snackbar.Add("History refreshed!", Severity.Success);
+    }
+
+    private void OnSearchChanged(string value)
+    {
+        searchString = value ?? string.Empty;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+        {
+            filteredHistory = validationHistory.ToList();
+        }
+        else
+        {
+            filteredHistory = validationHistory.Where(h =>
+                h.RunDate.ToString("MMM dd, yyyy").Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+                h.RunDate.ToString("HH:mm").Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+                h.Status.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+                h.Id.ToString().Contains(searchString, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        StateHasChanged();
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "Completed" => Color.Success,
+        "Failed" => Color.Error,
+        "Partial" => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetSuccessRate()
+    {
+        if (!validationHistory.Any()) return "0.0";
+
+        var totalProducts = validationHistory.Sum(h => h.TotalProducts);
+        var totalMatched = validationHistory.Sum(h => h.Matched);
+
+        if (totalProducts == 0) return "0.0";
+
+        return ((totalMatched * 100.0) / totalProducts).ToString("F1");
+    }
+}

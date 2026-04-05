@@ -1,0 +1,326 @@
+@page "/upload"
+@rendermode InteractiveServer
+@using PriceIntegrityHub.Core.Models
+@using PriceIntegrityHub.Core.Interfaces
+@using Microsoft.AspNetCore.Components.Forms
+@inject IExcelReader ExcelReader
+@inject IDataStore DataStore
+@inject ISnackbar Snackbar
+
+<PageTitle>Upload Data - Price Integrity Hub</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">
+    <MudIcon Icon="@Icons.Material.Filled.Upload" Class="mr-2" />
+    Upload Data
+</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">
+    Upload your Excel file containing product prices for validation
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Elevation="4" Class="pa-6">
+            <MudText Typo="Typo.h6" GutterBottom="true">Excel File Upload</MudText>
+
+            @* Key forces InputFile to completely re-render when changed *@
+            <div @key="@inputKey" style="position: relative; display: inline-block;">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           Disabled="@isProcessing"
+                           HtmlTag="label"
+                           Style="position: relative; overflow: hidden;">
+                    @GetButtonText()
+                    <InputFile OnChange="HandleFileSelected" 
+                               accept=".xlsx,.xls"
+                               style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;" />
+                </MudButton>
+            </div>
+
+            @if (!string.IsNullOrEmpty(uploadedFileName))
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-4" Icon="@Icons.Material.Filled.AttachFile">
+                    <MudText Typo="Typo.body2"><strong>File Selected:</strong></MudText>
+                    <MudText Typo="Typo.body1">@uploadedFileName</MudText>
+                    <MudText Typo="Typo.caption">Size: @fileSize KB</MudText>
+                </MudAlert>
+
+                @if (!isProcessing && !uploadSuccess)
+                {
+                    <MudStack Row="true" Spacing="2" Class="mt-4">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   StartIcon="@Icons.Material.Filled.Upload"
+                                   OnClick="ProcessUpload"
+                                   Disabled="@(isProcessing || fileData == null)"
+                                   Class="flex-grow-1">
+                            Upload & Process
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Error"
+                                   StartIcon="@Icons.Material.Filled.Clear"
+                                   OnClick="ClearUpload"
+                                   Disabled="@isProcessing">
+                            Clear
+                        </MudButton>
+                    </MudStack>
+                }
+            }
+
+            @if (isProcessing)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-4" />
+                <MudText Typo="Typo.caption" Class="mt-2" Align="Align.Center">
+                    Reading Excel file...
+                </MudText>
+            }
+
+            @if (uploadSuccess && previewProducts.Any())
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-4" Icon="@Icons.Material.Filled.CheckCircle">
+                    Successfully loaded <strong>@previewProducts.Count</strong> products from Excel!
+                </MudAlert>
+
+                <MudStack Row="true" Spacing="2" Class="mt-4">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               StartIcon="@Icons.Material.Filled.PlayArrow"
+                               Href="/validation"
+                               Class="flex-grow-1">
+                        Go to Validation
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="PrepareForNewUpload">
+                        Upload New File
+                    </MudButton>
+                </MudStack>
+            }
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4" Icon="@Icons.Material.Filled.Error">
+                    <strong>Error:</strong> @errorMessage
+                </MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="2" Class="pa-4 mt-4">
+            <MudText Typo="Typo.h6" GutterBottom="true">File Requirements</MudText>
+            <MudList T="string" Dense="true">
+                <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">
+                    Excel format (.xlsx or .xls)
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">
+                    Column A: Product Name
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">
+                    Column B: Price (numeric)
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">
+                    First row: Headers
+                </MudListItem>
+                <MudListItem T="string" Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">
+                    Maximum file size: 10 MB
+                </MudListItem>
+            </MudList>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Elevation="4" Class="pa-6">
+            <MudText Typo="Typo.h6" GutterBottom="true">Preview Data</MudText>
+
+            @if (previewProducts.Any())
+            {
+                <MudTable Items="@previewProducts" 
+                          Hover="true" 
+                          Striped="true" 
+                          Dense="true"
+                          Elevation="0"
+                          Height="400px"
+                          FixedHeader="true">
+                    <HeaderContent>
+                        <MudTh>Product Name</MudTh>
+                        <MudTh>Price</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Product Name">@context.Name</MudTd>
+                        <MudTd DataLabel="Price">£@context.Price.ToString("F2")</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">@context.Status</MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                <MudText Typo="Typo.caption" Class="mt-3" Color="Color.Secondary">
+                    Showing @previewProducts.Count items from Excel file
+                </MudText>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                    Upload an Excel file to see preview of your data
+                </MudAlert>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    // This key is used to force InputFile to re-render
+    private Guid inputKey = Guid.NewGuid();
+
+    private byte[]? fileData;
+    private string uploadedFileName = string.Empty;
+    private long fileSize;
+    private bool isProcessing = false;
+    private bool uploadSuccess = false;
+    private string errorMessage = string.Empty;
+    private List<Product> previewProducts = new();
+
+    protected override void OnInitialized()
+    {
+        // Restore state from DataStore if products were previously loaded
+        var storedProducts = DataStore.GetUploadedProducts();
+        var fileInfo = DataStore.GetUploadedFileInfo();
+
+        if (storedProducts.Any() && fileInfo != null)
+        {
+            previewProducts = storedProducts;
+            uploadedFileName = fileInfo.FileName;
+            fileSize = fileInfo.FileSizeKB;
+            uploadSuccess = true;
+        }
+    }
+
+    private string GetButtonText()
+    {
+        if (string.IsNullOrEmpty(uploadedFileName))
+            return "Select Excel File";
+        if (uploadSuccess)
+            return "Select New File";
+        return "Select Different File";
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        inputKey = Guid.NewGuid();
+
+        // Reset previous state but keep inputKey same during selection
+        uploadSuccess = false;
+        errorMessage = string.Empty;
+        previewProducts = new List<Product>();
+        fileData = null;
+
+        try
+        {
+            // Store file info
+            uploadedFileName = file.Name;
+            fileSize = file.Size / 1024;
+
+            // Read file into memory immediately
+            var maxFileSize = 1024 * 1024 * 10; // 10MB
+            await using var stream = file.OpenReadStream(maxFileSize);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            fileData = memoryStream.ToArray();
+
+            Snackbar.Add($"File '{uploadedFileName}' selected. Click 'Upload & Process' to continue.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error reading file: {ex.Message}";
+            uploadedFileName = string.Empty;
+            fileSize = 0;
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ProcessUpload()
+    {
+        if (fileData == null || fileData.Length == 0) 
+        {
+            errorMessage = "No file data available. Please select a file first.";
+            return;
+        }
+
+        isProcessing = true;
+        errorMessage = string.Empty;
+        uploadSuccess = false;
+        StateHasChanged();
+
+        try
+        {
+            // Create stream from stored bytes
+            using var memoryStream = new MemoryStream(fileData);
+
+            // Read Excel file
+            previewProducts = await ExcelReader.ReadExcelFileAsync(memoryStream);
+
+            if (previewProducts.Any())
+                {
+                    // Store products with file metadata (don't clear previous - overwrite)
+                    DataStore.SetUploadedProducts(previewProducts, uploadedFileName, fileSize);
+                    uploadSuccess = true;
+
+                // Generate new key so next file selection works
+                inputKey = Guid.NewGuid();
+
+                // Clear file data after successful processing
+                fileData = null;
+
+                Snackbar.Add($"Successfully loaded {previewProducts.Count} products! You can now run validation.", Severity.Success);
+            }
+            else
+            {
+                errorMessage = "No products found in Excel file. Please check the file format.";
+                Snackbar.Add("No products found in Excel file", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            Snackbar.Add($"Error reading Excel file: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearUpload()
+    {
+        ResetState();
+        Snackbar.Add("Upload cleared. You can select a new file.", Severity.Info);
+    }
+
+    private void PrepareForNewUpload()
+    {
+        ResetState();
+        Snackbar.Add("Ready to upload a new file.", Severity.Info);
+    }
+
+    private void ResetState()
+    {
+        fileData = null;
+        uploadedFileName = string.Empty;
+        fileSize = 0;
+        uploadSuccess = false;
+        errorMessage = string.Empty;
+        previewProducts = new List<Product>();
+
+        // Generate new key to force InputFile to re-render
+        inputKey = Guid.NewGuid();
+
+        StateHasChanged();
+    }
+}

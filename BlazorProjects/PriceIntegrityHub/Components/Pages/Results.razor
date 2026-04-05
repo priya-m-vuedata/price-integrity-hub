@@ -1,0 +1,340 @@
+@page "/results"
+@rendermode InteractiveServer
+@using PriceIntegrityHub.Core.Models
+@using PriceIntegrityHub.Core.Interfaces
+@using Microsoft.JSInterop
+@inject IDataStore DataStore
+@inject IResultExporter ResultExporter
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+
+<PageTitle>Results - Price Integrity Hub</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">
+    <MudIcon Icon="@Icons.Material.Filled.Assessment" Class="mr-2" />
+    Validation Results
+</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">
+    Detailed comparison results between Excel data and website prices
+</MudText>
+
+@if (uploadedFileInfo != null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AttachFile">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.body2"><strong>File Loaded:</strong> @uploadedFileInfo.FileName</MudText>
+                <MudText Typo="Typo.caption">Size: @uploadedFileInfo.FileSizeKB KB | Products: @uploadedProductCount | Uploaded: @uploadedFileInfo.UploadedAt.ToString("HH:mm:ss")</MudText>
+            </MudStack>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Success" 
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Href="/validation">
+                Run Validation
+            </MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+@if (!comparisonResults.Any())
+{
+    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+        No validation results available. Please run a validation first.
+        <MudButton Variant="Variant.Text" 
+                   Color="Color.Primary" 
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   Href="/validation"
+                   Class="mt-2">
+            Go to Validation
+        </MudButton>
+    </MudAlert>
+}
+else
+{
+    <MudPaper Elevation="4" Class="pa-6">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudTextField T="string"
+                          Value="@searchString" 
+                          ValueChanged="@((string s) => OnSearchChanged(s))"
+                          Placeholder="Search products..." 
+                          Adornment="Adornment.Start" 
+                          AdornmentIcon="@Icons.Material.Filled.Search" 
+                          IconSize="Size.Medium"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Class="flex-grow-1 mr-4" />
+
+            <MudSelect T="string" 
+                       Label="Filter by Status" 
+                       Value="@filterStatus"
+                       ValueChanged="@((string s) => OnFilterStatusChanged(s))"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Style="min-width: 200px;">
+                <MudSelectItem Value="@("All")">All Status</MudSelectItem>
+                <MudSelectItem Value="@("Matched")">Matched</MudSelectItem>
+                <MudSelectItem Value="@("NotMatched")">Not Matched</MudSelectItem>
+                <MudSelectItem Value="@("New")">New</MudSelectItem>
+                <MudSelectItem Value="@("Missing")">Missing</MudSelectItem>
+            </MudSelect>
+
+            <MudButton Variant="Variant.Outlined" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="RefreshData"
+                       Class="ml-2">
+                Refresh
+            </MudButton>
+
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Success" 
+                       StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="ExportToExcel"
+                       Disabled="@isExporting"
+                       Class="ml-2">
+                @(isExporting ? "Exporting..." : "Export")
+            </MudButton>
+        </MudStack>
+
+        <MudText Typo="Typo.caption" Class="mb-2" Color="Color.Secondary">
+            Showing @filteredResults.Count of @comparisonResults.Count results
+        </MudText>
+
+        <MudTable Items="@filteredResults" 
+                  Hover="true" 
+                  Striped="true" 
+                  Dense="true"
+                  Elevation="0"
+                  RowClassFunc="@SelectedRowClassFunc">
+            <HeaderContent>
+                <MudTh>Product Name</MudTh>
+                <MudTh>Excel Price</MudTh>
+                <MudTh>Website Price</MudTh>
+                <MudTh>Difference</MudTh>
+                <MudTh>Difference %</MudTh>
+                <MudTh>Status</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Product Name">
+                    <MudText Typo="Typo.body2">@context.ProductName</MudText>
+                </MudTd>
+                <MudTd DataLabel="Excel Price">
+                    <MudText Typo="Typo.body2">£@context.ExcelPrice.ToString("F2")</MudText>
+                </MudTd>
+                <MudTd DataLabel="Website Price">
+                    <MudText Typo="Typo.body2">
+                        @(context.WebsitePrice > 0 ? $"£{context.WebsitePrice:F2}" : "N/A")
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Difference">
+                    <MudText Typo="Typo.body2" Color="@GetDifferenceColor(context)">
+                        @(context.Status != ComparisonStatus.Missing && context.Status != ComparisonStatus.New 
+                            ? $"£{Math.Abs(context.Difference):F2}" 
+                            : "N/A")
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Difference %">
+                    <MudText Typo="Typo.body2" Color="@GetDifferenceColor(context)">
+                        @(context.Status != ComparisonStatus.Missing && context.Status != ComparisonStatus.New 
+                            ? $"{Math.Abs(context.DifferencePercent):F1}%" 
+                            : "N/A")
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @GetStatusText(context.Status)
+                    </MudChip>
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+            </PagerContent>
+        </MudTable>
+    </MudPaper>
+
+    <MudGrid Class="mt-6">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Matched</MudText>
+                        <MudText Typo="Typo.h5">
+                            @comparisonResults.Count(r => r.Status == ComparisonStatus.Matched)
+                        </MudText>
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Not Matched</MudText>
+                        <MudText Typo="Typo.h5">
+                            @comparisonResults.Count(r => r.Status == ComparisonStatus.NotMatched)
+                        </MudText>
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Large" Color="Color.Error" />
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">New Items</MudText>
+                        <MudText Typo="Typo.h5">
+                            @comparisonResults.Count(r => r.Status == ComparisonStatus.New)
+                        </MudText>
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.NewReleases" Size="Size.Large" Color="Color.Info" />
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Missing</MudText>
+                        <MudText Typo="Typo.h5">
+                            @comparisonResults.Count(r => r.Status == ComparisonStatus.Missing)
+                        </MudText>
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Large" Color="Color.Warning" />
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private string searchString = string.Empty;
+    private string filterStatus = "All";
+    private bool isExporting = false;
+    private List<ComparisonResult> comparisonResults = new();
+    private List<ComparisonResult> filteredResults = new();
+    private UploadedFileInfo? uploadedFileInfo;
+    private int uploadedProductCount = 0;
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+
+        // Check if a file is currently loaded
+        uploadedFileInfo = DataStore.GetUploadedFileInfo();
+        uploadedProductCount = DataStore.GetUploadedProducts().Count;
+    }
+
+    private void LoadData()
+    {
+        comparisonResults = DataStore.GetLatestResults();
+        ApplyFilters();
+    }
+
+    private void RefreshData()
+    {
+        LoadData();
+        Snackbar.Add("Data refreshed!", Severity.Success);
+    }
+
+    private void OnSearchChanged(string value)
+    {
+        searchString = value ?? string.Empty;
+        ApplyFilters();
+    }
+
+    private void OnFilterStatusChanged(string value)
+    {
+        filterStatus = value ?? "All";
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = comparisonResults.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(searchString))
+        {
+            filtered = filtered.Where(r => 
+                r.ProductName.Contains(searchString, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (filterStatus != "All")
+        {
+            if (Enum.TryParse<ComparisonStatus>(filterStatus, out var status))
+            {
+                filtered = filtered.Where(r => r.Status == status);
+            }
+        }
+
+        filteredResults = filtered.ToList();
+        StateHasChanged();
+    }
+
+    private string SelectedRowClassFunc(ComparisonResult result, int index)
+    {
+        if (result.Status == ComparisonStatus.NotMatched)
+        {
+            return "mud-theme-error-lighten";
+        }
+        return string.Empty;
+    }
+
+    private Color GetStatusColor(ComparisonStatus status) => status switch
+    {
+        ComparisonStatus.Matched => Color.Success,
+        ComparisonStatus.NotMatched => Color.Error,
+        ComparisonStatus.New => Color.Info,
+        ComparisonStatus.Missing => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(ComparisonStatus status) => status switch
+    {
+        ComparisonStatus.Matched => "Matched",
+        ComparisonStatus.NotMatched => "Not Matched",
+        ComparisonStatus.New => "New",
+        ComparisonStatus.Missing => "Missing",
+        _ => "Unknown"
+    };
+
+    private Color GetDifferenceColor(ComparisonResult result)
+    {
+        if (result.Status == ComparisonStatus.Matched) return Color.Success;
+        if (result.Status == ComparisonStatus.NotMatched) return Color.Error;
+        return Color.Default;
+    }
+
+    private async Task ExportToExcel()
+    {
+        try
+        {
+            isExporting = true;
+            StateHasChanged();
+
+            // Export filtered results
+            var resultsToExport = filteredResults.ToList();
+            var excelBytes = await ResultExporter.ExportToExcelAsync(resultsToExport);
+            var fileName = $"ValidationResults_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(excelBytes));
+
+            Snackbar.Add($"Exported {resultsToExport.Count} results successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isExporting = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,259 @@
+@page "/"
+@rendermode InteractiveServer
+@using PriceIntegrityHub.Core.Interfaces
+@using PriceIntegrityHub.Core.Models
+@inject IDataStore DataStore
+
+<PageTitle>Dashboard - Price Integrity Hub</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">
+    <MudIcon Icon="@Icons.Material.Filled.Dashboard" Class="mr-2" />
+    Dashboard
+</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">
+    Overview of price integrity validation results
+</MudText>
+
+@if (uploadedFileInfo != null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AttachFile">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.body2"><strong>File Loaded:</strong> @uploadedFileInfo.FileName</MudText>
+                <MudText Typo="Typo.caption">Size: @uploadedFileInfo.FileSizeKB KB | Products: @uploadedProductCount | Uploaded: @uploadedFileInfo.UploadedAt.ToString("HH:mm:ss")</MudText>
+            </MudStack>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Success" 
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Href="/validation">
+                Run Validation
+            </MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+<MudGrid>
+    <!-- Total Products Card -->
+    <MudItem xs="12" sm="6" md="4" lg="2">
+        <MudCard Elevation="4" Class="pa-4">
+            <MudCardContent>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Total Products</MudText>
+                        <MudText Typo="Typo.h4" Class="mt-2">@totalProducts</MudText>
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Large" Color="Color.Primary" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Matched Card -->
+    <MudItem xs="12" sm="6" md="4" lg="2">
+        <MudCard Elevation="4" Class="pa-4">
+            <MudCardContent>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Matched</MudText>
+                        <MudText Typo="Typo.h4" Class="mt-2">@matchedCount</MudText>
+                        @if (totalProducts > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Success">@((matchedCount * 100.0 / totalProducts).ToString("F1"))%</MudText>
+                        }
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Not Matched Card -->
+    <MudItem xs="12" sm="6" md="4" lg="2">
+        <MudCard Elevation="4" Class="pa-4">
+            <MudCardContent>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Not Matched</MudText>
+                        <MudText Typo="Typo.h4" Class="mt-2">@notMatchedCount</MudText>
+                        @if (totalProducts > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Error">@((notMatchedCount * 100.0 / totalProducts).ToString("F1"))%</MudText>
+                        }
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Large" Color="Color.Error" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- New Items Card -->
+    <MudItem xs="12" sm="6" md="4" lg="2">
+        <MudCard Elevation="4" Class="pa-4">
+            <MudCardContent>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">New Items</MudText>
+                        <MudText Typo="Typo.h4" Class="mt-2">@newItemsCount</MudText>
+                        @if (totalProducts > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Info">@((newItemsCount * 100.0 / totalProducts).ToString("F1"))%</MudText>
+                        }
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.NewReleases" Size="Size.Large" Color="Color.Info" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <!-- Missing Card -->
+    <MudItem xs="12" sm="6" md="4" lg="2">
+        <MudCard Elevation="4" Class="pa-4">
+            <MudCardContent>
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Missing</MudText>
+                        <MudText Typo="Typo.h4" Class="mt-2">@missingCount</MudText>
+                        @if (totalProducts > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">@((missingCount * 100.0 / totalProducts).ToString("F1"))%</MudText>
+                        }
+                    </MudStack>
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Large" Color="Color.Warning" />
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+<!-- Last Run Summary Section -->
+@if (latestRun != null)
+{
+    <MudPaper Elevation="4" Class="pa-6 mt-6">
+        <MudText Typo="Typo.h5" GutterBottom="true">
+            <MudIcon Icon="@Icons.Material.Filled.Timeline" Class="mr-2" />
+            Last Run Summary
+        </MudText>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" md="6">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body1"><strong>Run Date:</strong></MudText>
+                        <MudText Typo="Typo.body1">@latestRun.RunDate.ToString("MMM dd, yyyy HH:mm")</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body1"><strong>Products Validated:</strong></MudText>
+                        <MudText Typo="Typo.body1">@latestRun.TotalProducts</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body1"><strong>Status:</strong></MudText>
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small">@latestRun.Status</MudChip>
+                    </MudStack>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.h6" GutterBottom="true">Validation Breakdown</MudText>
+                @if (latestRun.TotalProducts > 0)
+                {
+                    <MudProgressLinear Color="Color.Success" Value="@((double)latestRun.Matched / latestRun.TotalProducts * 100)" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Class="mb-3">@((latestRun.Matched * 100.0 / latestRun.TotalProducts).ToString("F1"))% Matched</MudText>
+                }
+
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body2">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" /> Matched
+                        </MudText>
+                        <MudText Typo="Typo.body2">@latestRun.Matched</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body2">
+                            <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Small" Color="Color.Error" /> Not Matched
+                        </MudText>
+                        <MudText Typo="Typo.body2">@latestRun.Mismatch</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body2">
+                            <MudIcon Icon="@Icons.Material.Filled.NewReleases" Size="Size.Small" Color="Color.Info" /> New Items
+                        </MudText>
+                        <MudText Typo="Typo.body2">@latestRun.NewProducts</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.body2">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Warning" /> Missing
+                        </MudText>
+                        <MudText Typo="Typo.body2">@latestRun.MissingProducts</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        <MudStack Row="true" Spacing="3" Class="mt-4">
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Upload"
+                       Href="/upload">
+                Upload New Data
+            </MudButton>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Success" 
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Href="/validation">
+                Run Validation
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Assessment"
+                       Href="/results">
+                View Results
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Elevation="4" Class="pa-6 mt-6">
+        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+            No validation runs yet. Upload an Excel file and run validation to see statistics.
+        </MudAlert>
+        <MudStack Row="true" Spacing="3" Class="mt-4">
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Upload"
+                       Href="/upload">
+                Upload Excel File
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@code {
+    private int totalProducts = 0;
+    private int matchedCount = 0;
+    private int notMatchedCount = 0;
+    private int newItemsCount = 0;
+    private int missingCount = 0;
+    private ValidationRun? latestRun;
+    private UploadedFileInfo? uploadedFileInfo;
+    private int uploadedProductCount = 0;
+
+    protected override void OnInitialized()
+    {
+        var stats = DataStore.GetStatistics();
+        totalProducts = stats.Total;
+        matchedCount = stats.Matched;
+        notMatchedCount = stats.NotMatched;
+        newItemsCount = stats.NewItems;
+        missingCount = stats.Missing;
+
+        latestRun = DataStore.GetLatestRun();
+
+        // Check if a file is currently loaded
+        uploadedFileInfo = DataStore.GetUploadedFileInfo();
+        uploadedProductCount = DataStore.GetUploadedProducts().Count;
+    }
+}

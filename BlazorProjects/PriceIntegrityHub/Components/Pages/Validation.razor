@@ -1,0 +1,359 @@
+@page "/validation"
+@rendermode InteractiveServer
+@using PriceIntegrityHub.Core.Interfaces
+@using PriceIntegrityHub.Core.Models
+@inject IWebScraper WebScraper
+@inject IPriceComparisonService ComparisonService
+@inject IDataStore DataStore
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Run Validation - Price Integrity Hub</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">
+    <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Class="mr-2" />
+    Run Validation
+</MudText>
+<MudText Class="mb-6" Color="Color.Secondary">
+    Execute price validation and compare Excel data with website
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudPaper Elevation="4" Class="pa-6">
+            <MudText Typo="Typo.h6" GutterBottom="true">Validation Process</MudText>
+
+            @if (!hasUploadedData)
+            {
+                <MudAlert Severity="Severity.Warning" Icon="@Icons.Material.Filled.Warning">
+                    Please upload an Excel file first before running validation.
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Warning" 
+                               StartIcon="@Icons.Material.Filled.Upload"
+                               Href="/upload"
+                               Class="mt-2">
+                        Go to Upload
+                    </MudButton>
+                </MudAlert>
+            }
+            else
+            {
+                @if (uploadedFileInfo != null)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mb-4" Icon="@Icons.Material.Filled.AttachFile">
+                        <MudText Typo="Typo.body2"><strong>File Loaded:</strong> @uploadedFileInfo.FileName</MudText>
+                        <MudText Typo="Typo.caption">Size: @uploadedFileInfo.FileSizeKB KB | Products: @uploadedProductCount | Uploaded: @uploadedFileInfo.UploadedAt.ToString("HH:mm:ss")</MudText>
+                    </MudAlert>
+                }
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           FullWidth="true"
+                           OnClick="StartValidation"
+                           Disabled="isRunning">
+                    @(isRunning ? "Validation Running..." : "Start Validation")
+                </MudButton>
+            }
+
+            @if (isRunning)
+            {
+                <MudProgressLinear Color="Color.Primary" 
+                                   Value="@progress" 
+                                   Class="mt-6 mb-2" 
+                                   Size="Size.Large" />
+                <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+                    @progress% Complete - @currentStepMessage
+                </MudText>
+            }
+
+            @if (hasError)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-6" Icon="@Icons.Material.Filled.Error">
+                    <strong>Validation Error</strong>
+                    <MudText Typo="Typo.body2">@errorMessage</MudText>
+                </MudAlert>
+            }
+
+            @if (validationComplete)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-6" Icon="@Icons.Material.Filled.CheckCircle">
+                    <strong>Validation Completed Successfully!</strong>
+                    <MudText Typo="Typo.body2" Class="mt-2">
+                        Total Products Validated: <strong>@totalProducts</strong>
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Matched: <strong>@matchedCount</strong> | 
+                        Not Matched: <strong>@mismatchCount</strong> | 
+                        New: <strong>@newCount</strong> | 
+                        Missing: <strong>@missingCount</strong>
+                    </MudText>
+                    <MudButton Variant="Variant.Text" 
+                               Color="Color.Success" 
+                               StartIcon="@Icons.Material.Filled.Assessment"
+                               Href="/results"
+                               Class="mt-2">
+                        View Detailed Results
+                    </MudButton>
+                </MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Elevation="4" Class="pa-6 mt-4">
+            <MudText Typo="Typo.h6" GutterBottom="true">
+                <MudIcon Icon="@Icons.Material.Filled.Description" Class="mr-2" />
+                Process Log
+            </MudText>
+
+            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical">
+                @foreach (var log in processLogs)
+                {
+                    <MudTimelineItem Color="@GetLogColor(log.Status)" Size="Size.Small">
+                        <ItemOpposite>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@log.Timestamp.ToString("HH:mm:ss")</MudText>
+                        </ItemOpposite>
+                        <ItemContent>
+                            <MudText Typo="Typo.body2">
+                                <strong>@log.Message</strong>
+                            </MudText>
+                            @if (!string.IsNullOrEmpty(log.Details))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@log.Details</MudText>
+                            }
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+
+            @if (!processLogs.Any() && !isRunning)
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                    Click "Start Validation" to begin the process
+                </MudAlert>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="4">
+        <MudPaper Elevation="4" Class="pa-6">
+            <MudText Typo="Typo.h6" GutterBottom="true">Validation Steps</MudText>
+            <MudList T="string" Dense="true">
+                <MudListItem T="string" Icon="@GetStepIcon(1)" IconColor="@GetStepColor(1)">
+                    <MudText Typo="Typo.body2">Reading Excel Data</MudText>
+                </MudListItem>
+                <MudListItem T="string" Icon="@GetStepIcon(2)" IconColor="@GetStepColor(2)">
+                    <MudText Typo="Typo.body2">Launching Browser</MudText>
+                </MudListItem>
+                <MudListItem T="string" Icon="@GetStepIcon(3)" IconColor="@GetStepColor(3)">
+                    <MudText Typo="Typo.body2">Scraping Website</MudText>
+                </MudListItem>
+                <MudListItem T="string" Icon="@GetStepIcon(4)" IconColor="@GetStepColor(4)">
+                    <MudText Typo="Typo.body2">Comparing Data</MudText>
+                </MudListItem>
+                <MudListItem T="string" Icon="@GetStepIcon(5)" IconColor="@GetStepColor(5)">
+                    <MudText Typo="Typo.body2">Generating Report</MudText>
+                </MudListItem>
+            </MudList>
+        </MudPaper>
+
+        <MudPaper Elevation="2" Class="pa-4 mt-4">
+            <MudText Typo="Typo.h6" GutterBottom="true">Configuration</MudText>
+            <MudStack Spacing="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.body2">Source:</MudText>
+                    <MudText Typo="Typo.body2"><strong>Excel File</strong></MudText>
+                </MudStack>
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.body2">Target:</MudText>
+                    <MudText Typo="Typo.body2"><strong>books.toscrape.com</strong></MudText>
+                </MudStack>
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.body2">Products:</MudText>
+                    <MudText Typo="Typo.body2"><strong>@uploadedProductCount</strong></MudText>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool isRunning = false;
+    private bool validationComplete = false;
+    private bool hasError = false;
+    private bool hasUploadedData = false;
+    private string errorMessage = string.Empty;
+    private string currentStepMessage = string.Empty;
+    private int progress = 0;
+    private int currentStep = 0;
+    private int uploadedProductCount = 0;
+    private int totalProducts = 0;
+    private int matchedCount = 0;
+    private int mismatchCount = 0;
+    private int newCount = 0;
+    private int missingCount = 0;
+    private List<ProcessLog> processLogs = new();
+    private UploadedFileInfo? uploadedFileInfo;
+
+    protected override void OnInitialized()
+    {
+        var uploadedProducts = DataStore.GetUploadedProducts();
+        hasUploadedData = uploadedProducts.Any();
+        uploadedProductCount = uploadedProducts.Count;
+        uploadedFileInfo = DataStore.GetUploadedFileInfo();
+    }
+
+    private async Task StartValidation()
+    {
+        isRunning = true;
+        validationComplete = false;
+        hasError = false;
+        progress = 0;
+        currentStep = 0;
+        processLogs.Clear();
+
+        try
+        {
+            var startTime = DateTime.Now;
+
+            // Step 1: Reading Excel Data
+            currentStep = 1;
+            currentStepMessage = "Loading Excel data...";
+            await AddLog("Reading Excel Data", $"Loading {uploadedProductCount} products from uploaded file...", "info");
+            await UpdateProgress(20);
+
+            var excelProducts = DataStore.GetUploadedProducts();
+            await AddLog("Excel Data Loaded", $"Successfully loaded {excelProducts.Count} products", "success");
+
+            // Step 2: Launching Browser
+            currentStep = 2;
+            currentStepMessage = "Initializing browser...";
+            await AddLog("Launching Browser", "Initializing Selenium ChromeDriver in headless mode...", "info");
+            await UpdateProgress(30);
+            await Task.Delay(1000); // Brief delay for UI
+            await AddLog("Browser Ready", "ChromeDriver initialized successfully", "success");
+
+            // Step 3: Scraping Website
+            currentStep = 3;
+            currentStepMessage = "Scraping books.toscrape.com...";
+            await AddLog("Scraping Website", "Extracting product data from books.toscrape.com...", "info");
+            await UpdateProgress(40);
+
+            var websiteProducts = await WebScraper.GetProductsAsync();
+
+            await UpdateProgress(65);
+            await AddLog("Website Data Scraped", $"Successfully scraped {websiteProducts.Count} products from website", "success");
+
+            // Step 4: Comparing Data
+            currentStep = 4;
+            currentStepMessage = "Comparing products and prices...";
+            await AddLog("Comparing Data", "Matching Excel products with website data and comparing prices...", "info");
+            await UpdateProgress(75);
+
+            var comparisonResults = ComparisonService.CompareProducts(excelProducts, websiteProducts);
+
+            await UpdateProgress(90);
+            await AddLog("Comparison Complete", $"Compared {comparisonResults.Count} products", "success");
+
+            // Step 5: Generating Report
+            currentStep = 5;
+            currentStepMessage = "Generating report...";
+            await AddLog("Generating Report", "Creating detailed comparison report...", "info");
+
+            // Store results
+            DataStore.SaveResults(comparisonResults);
+
+            // Get statistics
+            var summary = ComparisonService.GetSummary(comparisonResults);
+            matchedCount = summary.Matched;
+            mismatchCount = summary.NotMatched;
+            newCount = summary.NewItems;
+            missingCount = summary.Missing;
+            totalProducts = comparisonResults.Count;
+
+            // Save to history
+            var endTime = DateTime.Now;
+            var duration = endTime - startTime;
+
+            DataStore.AddValidationRun(new ValidationRun
+            {
+                RunDate = DateTime.Now,
+                TotalProducts = totalProducts,
+                Matched = matchedCount,
+                Mismatch = mismatchCount,
+                NewProducts = newCount,
+                MissingProducts = missingCount,
+                Status = "Completed"
+            });
+
+            await UpdateProgress(100);
+            await AddLog("Validation Completed", $"Process completed in {duration.TotalSeconds:F1} seconds", "success");
+
+            // Clear uploaded products after successful validation
+            DataStore.ClearUploadedProducts();
+            uploadedFileInfo = null;
+
+            validationComplete = true;
+            Snackbar.Add($"Validation completed! {matchedCount} matched, {mismatchCount} mismatched", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            hasError = true;
+            errorMessage = ex.Message;
+            await AddLog("Error", $"Validation failed: {ex.Message}", "error");
+            Snackbar.Add($"Validation failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isRunning = false;
+            currentStepMessage = string.Empty;
+        }
+    }
+
+    private async Task UpdateProgress(int targetProgress)
+    {
+        while (progress < targetProgress)
+        {
+            await Task.Delay(30);
+            progress++;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddLog(string message, string details, string status)
+    {
+        processLogs.Add(new ProcessLog
+        {
+            Message = message,
+            Details = details,
+            Status = status,
+            Timestamp = DateTime.Now
+        });
+        await Task.Delay(100);
+        StateHasChanged();
+    }
+
+    private Color GetLogColor(string status) => status switch
+    {
+        "success" => Color.Success,
+        "error" => Color.Error,
+        "warning" => Color.Warning,
+        _ => Color.Info
+    };
+
+    private string GetStepIcon(int step) => currentStep >= step 
+        ? Icons.Material.Filled.CheckCircle 
+        : (currentStep == step - 1 ? Icons.Material.Filled.HourglassEmpty : Icons.Material.Filled.RadioButtonUnchecked);
+
+    private Color GetStepColor(int step) => currentStep >= step 
+        ? Color.Success 
+        : (currentStep == step - 1 ? Color.Primary : Color.Default);
+
+    private class ProcessLog
+    {
+        public string Message { get; set; } = string.Empty;
+        public string Details { get; set; } = string.Empty;
+        public string Status { get; set; } = "info";
+        public DateTime Timestamp { get; set; }
+    }
+}

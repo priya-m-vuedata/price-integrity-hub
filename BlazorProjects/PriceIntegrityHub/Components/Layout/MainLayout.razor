@@ -1,0 +1,54 @@
+﻿@inherits LayoutComponentBase
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="2" Color="Color.Primary">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" 
+                       Color="Color.Inherit" 
+                       Edge="Edge.Start" 
+                       OnClick="@ToggleDrawer" 
+                       aria-label="Toggle navigation menu" />
+        <MudIcon Icon="@Icons.Material.Filled.PriceCheck" Class="mr-2" />
+        <MudText Typo="Typo.h5" Class="ml-1">Price Integrity Hub</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Notifications" 
+                       Color="Color.Inherit" 
+                       aria-label="Notifications" />
+        <MudIconButton Icon="@Icons.Material.Filled.AccountCircle" 
+                       Color="Color.Inherit" 
+                       aria-label="Account" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" 
+               ClipMode="DrawerClipMode.Always" 
+               Elevation="2" 
+               Variant="@DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6" Color="Color.Primary">
+                <MudIcon Icon="@Icons.Material.Filled.Menu" Class="mr-2" />
+                Navigation
+            </MudText>
+        </MudDrawerHeader>
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4 mb-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+}
