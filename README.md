@@ -2,6 +2,7 @@
 
 ## 🔍 Overview
 Price Integrity Hub is a **Blazor-based POC** designed to validate product pricing by comparing uploaded data with live website data using automation.
+<img width="2863" height="1462" alt="image" src="https://github.com/user-attachments/assets/edbd360f-ee44-44e0-bced-0fbc6ea0457a" />
 
 ---
 
